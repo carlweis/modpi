@@ -1,0 +1,842 @@
+#!/usr/bin/python
+import os, sys, time, getopt
+from subprocess import Popen, list2cmdline
+
+# Application path
+APP_PATH = "app/"
+
+# Asset paths
+ASSETS_PATH = os.path.join(APP_PATH, 'assets/')
+ASSET_IMAGES_PATH = os.path.join(ASSETS_PATH, 'images/')
+ASSET_STYLESHEETS_PATH = os.path.join(ASSETS_PATH, 'stylesheets/')
+ASSET_JAVASCRIPTS_PATH = os.path.join(ASSETS_PATH, 'javascripts/')
+
+# Static paths
+STATIC_PATH = os.path.join(APP_PATH, 'static/')
+STATIC_IMAGE_PATH = os.path.join(STATIC_PATH, 'img/')
+STATIC_CSS_PATH = os.path.join(STATIC_PATH, 'css/')
+STATIC_JS_PATH = os.path.join(STATIC_PATH, 'js/')
+
+# Console ASCII colors
+COLOR_HEADER = '\033[95m'
+COLOR_OKBLUE = '\033[94m'
+COLOR_OKGREEN = '\033[92m'
+COLOR_WARNING = '\033[93m'
+COLOR_FAIL = '\033[91m'
+COLOR_ENDC = '\033[0m'
+FONT_BOLD = '\033[1m'
+FRONT_UNDERLINE = '\033[4m'
+
+CREATE_STATEMENT  = COLOR_OKGREEN + 'create\t'  + COLOR_ENDC
+MIGRATE_STATEMENT = COLOR_OKGREEN + 'migrate\t' + COLOR_ENDC
+ENABLE_STATEMENT  = COLOR_OKGREEN + 'enable\t'  + COLOR_ENDC
+FAILED_STATEMENT  = COLOR_FAIL    + 'failed\t'  + COLOR_ENDC
+
+# Console Error messages
+APP_PATH_NOT_FOUND_ERROR_MESSAGE = str((
+    "Application directory not found.\n"
+    "Make sure you are running the generator from your project directory.\n"
+))
+
+# Main execution
+def main(argv):
+    try:
+        opts, args = getopt.getopt(argv, "g,-layout", ["help", ""])
+        if args[0] == 'new':
+            # check for -d option
+            if len(args) > 2 and args[2] == '-d':
+                db = args[3]
+                # geneate a new application
+                create_app(args[1], db)
+            else:
+                create_app(args[1])
+        elif args[0] == 'g' or args[0] == 'generate':
+            # generate a new module
+            if args[1] == 'module':
+                # check if the app directory exists
+                if not os.path.exists(APP_PATH):
+                    print COLOR_FAIL + APP_PATH_NOT_FOUND_ERROR_MESSAGE + COLOR_ENDC
+                else:
+                    module_name = args[2]
+                    # check if we need to create a module layout
+                    print args
+                    if len(args) > 3:
+                        if args[3] == 'with-layout':
+                            # create the module with a layout
+                            add_module(name=module_name, with_layout=True)
+                    else:
+                        # create the module and use the layouts/application.html layout
+                        add_module(name=module_name)
+
+            # generate stylesheet file
+            if args[1] == 'stylesheet':
+                # check if the app directory exists
+                if not os.path.exists(APP_PATH):
+                    print COLOR_FAIL + APP_PATH_NOT_FOUND_ERROR_MESSAGE + COLOR_ENDC
+                else:
+                    print 'generate stylesheet'
+
+            # generate javascript file
+            if args[1] == 'javascript':
+                # check if the app directory exists
+                if not os.path.exists(APP_PATH):
+                    print COLOR_FAIL + APP_PATH_NOT_FOUND_ERROR_MESSAGE + COLOR_ENDC
+                else:
+                    print 'generate javascript file'
+        elif args[0] == 'serve':
+            if not os.path.exists(APP_PATH):
+                print COLOR_FAIL + APP_PATH_NOT_FOUND_ERROR_MESSAGE + COLOR_ENDC
+            else:
+                # start the flask web server and gulp for asset processing
+                serve()
+        elif args[0] == 'db':
+            if not os.path.exists(APP_PATH):
+                print COLOR_FAIL + APP_PATH_NOT_FOUND_ERROR_MESSAGE + COLOR_ENDC
+            else:
+                working_dir = os.path.realpath(__file__)
+                if args[1] == 'create':
+                    # create the database
+                    print CREATE_STATEMENT + 'database ' + working_dir
+                    # enable migrations
+                    if not os.path.exists('migrations'):
+                        print ENABLE_STATEMENT + 'database migrations\n'
+                        os.system('env/bin/alembic init --template multidb migrations')
+                    else:
+                        print FAILED_STATEMENT + 'migrations directory already exists.'
+
+                elif args[1] == 'migrate':
+                    # migrate the database
+                    print MIGRATE_STATEMENT + ' database' + working_dir
+
+    except getopt.GetoptError:
+        usage()
+        sys.exit(2)
+
+def print_ascii_art_logo():
+    print COLOR_WARNING + '\n-------- created by ' + COLOR_OKBLUE + \
+        ' Carl Weis <carl@carlweis.com>' + COLOR_WARNING + ' --------' + COLOR_ENDC
+    print COLOR_FAIL + '''
+  o          o                        o    o__ __o    __o__ 
+ <|\        /|>                      <|>  <|     v\     |   
+ / |\o    o/| \                      < \  / \     <\   / \  
+ \o/ v\  /v \o/    o__ __o      o__ __o/  \o/     o/   \o/  
+  |   <\/>   |    /v     v\    /v     |    |__  _<|/    |   
+ / \        / \  />       <\  />     / \   |           < >  
+ \o/        \o/  \         /  \      \o/  <o>           |   
+  |          |    o       o    o      |    |            o   
+ / \        / \   <\__ __/>    <\__  / \  / \         __|>_ 
+''' + COLOR_WARNING
+    print '''----------- FLASK MODULAR APPLICATION GENERATOR -----------''' + COLOR_ENDC
+
+def generate_requirements_file(name):
+    project_path = name + '/'
+    with open(os.path.join(project_path, 'requirements.txt'), 'w') as requirements_file:
+        requirements_file.write(requirements_file_contents())
+
+def create_app(name, db='sqlite'):
+    # print console new app header
+    print_ascii_art_logo()
+    print COLOR_HEADER + '\n\nCrafting new ' + name + ' ModPi application...' + COLOR_ENDC
+    print COLOR_OKBLUE + '\nCreating application files...' + COLOR_ENDC
+
+    # generate app directory
+    app_path = os.path.join(name, APP_PATH)
+    if not os.path.exists(app_path):
+        os.makedirs(app_path)
+    print CREATE_STATEMENT + app_path
+
+    # generate __init__.py
+    with open(os.path.join(app_path, '__init__.py'), 'w') as init_file:
+        init_file.write(app_init_file_contents(name))
+    print CREATE_STATEMENT + app_path + '__init__.py'
+
+    # generate config.py
+    with open(os.path.join(name, 'config.py'), 'w') as config_file:
+        config_file.write(config_file_contents(name, db))
+    print CREATE_STATEMENT + name + '/config.py'
+
+    # generate run.py
+    with open(os.path.join(name, 'run.py'), 'w') as run_file:
+        run_file.write(run_file_contents(name))
+    print CREATE_STATEMENT + name + '/run.py'
+
+    # generate error / templates
+    error_templates_path = os.path.join(app_path, "templates/errors")
+    if not os.path.exists(error_templates_path):
+        os.makedirs(error_templates_path)
+        print CREATE_STATEMENT + error_templates_path
+    
+    # generate error layout.html template
+    with open(os.path.join(error_templates_path, 'layout.html'), 'w') as error_layout_file:
+        error_layout_file.write(layout_template_file_contents(name))
+        print CREATE_STATEMENT + os.path.join(error_templates_path, 'layout.html')
+
+    # generate layouts/application.html template
+    app_layout_path = os.path.join(app_path, 'templates/layouts/application.html')
+    layouts_path = os.path.join(app_path, 'templates/layouts')
+    # create the templates/layouts directory
+    if not os.path.exists(layouts_path):
+        os.makedirs(layouts_path)
+    with open(app_layout_path, 'w') as app_layout_file:
+        app_layout_file.write(app_layout_template_file_contents(name))
+        print CREATE_STATEMENT + os.path.join(error_templates_path, 'layout.html')
+
+    # generate 404.html template
+    with open(os.path.join(error_templates_path, '404.html'), 'w') as error_404_file:
+        error_404_file.write(error_404_file_contents())
+        print CREATE_STATEMENT + os.path.join(error_templates_path, '404.html')
+
+    # generate project . files
+    make_project_files(name)
+
+    # generate assets directory
+    make_asset_dirs(name)
+
+    # generate static directory
+    make_static_dirs(name)
+
+    # generate default module
+    add_module("default", "/", name + "/")
+
+     # setup virtualenv
+    print COLOR_OKBLUE + '\nCreating virtualenv...\n' + COLOR_ENDC
+    os.system("virtualenv " + name + "/env")
+    
+    # activate the environment
+    print 'Activating virtualenv...\n'
+    os.system("source " + name + "/env/bin/activate")
+    
+    # generate requirements.txt
+    generate_requirements_file(name)
+
+    # install app requirements
+    print COLOR_OKBLUE + 'Installing application requirements...\n' + COLOR_OKGREEN
+    os.system(name + "/env/bin/pip install -r " +
+              name + "/requirements.txt")
+    print COLOR_ENDC
+
+    # install node.js modules
+    run_npm_install(name)
+
+    # install bower dependencies
+    run_bower_install(name)
+
+    # run gulp init to process assets
+    run_gulp_init(name)
+
+    # initialize git repo and do initial commit
+    init_git_and_commit(name)
+
+    print COLOR_OKGREEN + 'Project Successfully generated. Happy coding!\n' + COLOR_ENDC
+
+def serve():
+    commands = [
+        ['env/bin/python', 'run.py'],
+        ['gulp', 'init']
+    ]
+    exec_commands(commands)
+    
+    # os.system("env/bin/python run.py")
+    # os.system("gulp")
+
+def cpu_count():
+    ''' Returns the number of CPUs in the system
+    '''
+    num = 1
+    if sys.platform == 'win32':
+        try:
+            num = int(os.environ['NUMBER_OF_PROCESSORS'])
+        except (ValueError, KeyError):
+            pass
+    elif sys.platform == 'darwin':
+        try:
+            num = int(os.popen('sysctl -n hw.ncpu').read())
+        except ValueError:
+            pass
+    else:
+        try:
+            num = os.sysconf('SC_NPROCESSORS_ONLN')
+        except (ValueError, OSError, AttributeError):
+            pass
+
+    return num
+
+def exec_commands(cmds):
+    ''' Exec commands in parallel in multiple process 
+    (as much as we have CPU)
+    '''
+    if not cmds: return # empty list
+
+    def done(p):
+        return p.poll() is not None
+    def success(p):
+        return p.returncode == 0
+    def fail():
+        sys.exit(1)
+
+    max_task = cpu_count()
+    processes = []
+    while True:
+        while cmds and len(processes) < max_task:
+            task = cmds.pop()
+            print list2cmdline(task)
+            processes.append(Popen(task))
+
+        for p in processes:
+            if done(p):
+                if success(p):
+                    processes.remove(p)
+                else:
+                    fail()
+
+        if not processes and not cmds:
+            break
+        else:
+            time.sleep(0.05)
+
+def init_git_and_commit(name):
+    print '\n' + COLOR_OKGREEN + 'Git Initialization...\n' + COLOR_ENDC
+    os.system("cd " + name + "/ && git init && git add . && git commit -am'initial commit' && git status")
+
+def run_gulp_init(name):
+    os.system("cd " + name + "/ && gulp init")
+
+def run_npm_install(name):
+     os.system("cd " + name + "/ && npm install")
+
+def run_bower_install(name):
+     os.system("cd " + name + "/ && bower install --save")
+     # copy font-awesome fonts to static/fonts
+     from shutil import copytree
+     print '\n' + CREATE_STATEMENT + name + '/static/fonts/\n'
+     print COLOR_OKBLUE + 'Copying font-awesome fonts to static folder...\n\n' + COLOR_ENDC
+     copytree(name + '/vendor/font-awesome/fonts', name + '/app/static/fonts/')
+
+def make_project_files(name):
+    # generate README
+    with open(name + '/README.md', 'w') as readme_file:
+        readme_file.write('#' + name.capitalize() + ' ModPi Web Application')
+    print CREATE_STATEMENT + name + '/README.md'
+
+    # generate .gitignore
+    with open(name + '/.gitignore', 'w') as gitignore_file:
+        gitignore_file.write(str(('node_modules/\nvendor/\nenv/\n.env')))
+    print CREATE_STATEMENT + name + '/.gitignore'
+
+    # generate .bowerrc
+    with open(name + '/.bowerrc', 'w') as bowerrc_file:
+        bowerrc_file.write(str(('{"directory":"vendor/"}')))
+    print CREATE_STATEMENT + name + '/.bowerrc'
+
+    # generate bower.json
+    with open(name + '/bower.json', 'w') as bowerjson_file:
+     bowerjson_file.write(str((
+             '{\n\t"name": "' + name + '",'
+    '''
+    "description": "",
+    "main": "",
+    "license": "MIT",
+    "homepage": "",
+    "private": true,
+    "directory": "vendor/",
+    "dependencies": {
+        "jquery": "~2.1.4",
+        "bootstrap": "v4.0.0-alpha",
+        "font-awesome": "~4.5.0"
+    }
+}
+'''
+     )))
+    print CREATE_STATEMENT + name + '/bower.json'
+
+    # generate package.json
+    with open(name + '/package.json', 'w') as packagejson_file:
+            packagejson_file.write(str((
+    '''
+{
+    "private": true,
+    "devDependencies": {
+        "bower": "^1.6.7",
+        "gulp": "^3.8.8",
+        "gulp-concat": "^2.6.0",
+        "gulp-rename": "^1.2.2",
+        "gulp-sass": "^2.1.0",
+        "gulp-uglify": "^1.4.2"
+    },
+    "dependencies": {
+        "bootstrap-sass": "^3.0.0"
+    }
+}
+'''
+            )))
+    print CREATE_STATEMENT + name + '/package.json'
+
+    # generate Gulpfile.js
+    with open(name + '/Gulpfile.js', 'w') as gulp_file:
+            gulp_file.write(str((
+    ''' 
+// imports
+var gulp = require('gulp');
+var sass = require('gulp-sass');
+var concat = require('gulp-concat');
+var uglify = require('gulp-uglify');
+var rename = require('gulp-rename');
+
+// styles
+gulp.task('styles', function() {
+    gulp.src('app/assets/stylesheets/**/*.scss')
+        .pipe(sass().on('error', sass.logError))
+        .pipe(gulp.dest('app/static/css/'))
+});
+
+// core javascript
+gulp.task('js-core', function() {
+    return gulp.src([
+            'vendor/jquery/dist/jquery.min.js',
+            'vendor/bootstrap/dist/js/bootstrap.min.js'
+        ])
+        .pipe(concat('vendor.js'))
+        .pipe(gulp.dest('app/assets/javascripts/'))
+        .pipe(rename('vendor.js'))
+        .pipe(uglify())
+        .pipe(gulp.dest('app/assets/javascripts/'))
+});
+
+// application javascript
+gulp.task('js-default', function() {
+    return gulp.src([
+            'app/assets/javascripts/vendor.js',
+            'app/assets/javascripts/application.js',
+            'app/assets/javascripts/_default.js',
+        ])
+        .pipe(concat('application.js'))
+        .pipe(gulp.dest('app/static/js/'))
+        .pipe(rename('application.js'))
+        .pipe(uglify())
+        .pipe(gulp.dest('app/static/js/'))
+});
+
+gulp.task('init', ['styles', 'js-core', 'js-default'], function() {
+     return gulp.src([
+            'app/assets/javascripts/vendor.js',
+            'app/assets/javascripts/application.js',
+        ])
+        .pipe(concat('application.js'))
+        .pipe(gulp.dest('app/static/js/'))
+        .pipe(rename('application.js'))
+        .pipe(uglify())
+        .pipe(gulp.dest('app/static/js/'))
+});
+
+//Watch task
+gulp.task('default', ['styles', 'js-core', 'js-default'], function() {
+    gulp.watch([
+        'app/assets/stylesheets/**/*.scss',
+        'app/assets/javascripts/**/*.js'
+    ], [
+        'styles',
+        'js-core',
+        'js-default'
+    ]);
+});
+'''
+            )))
+    print CREATE_STATEMENT + name + '/Gulpfile.js'
+
+
+
+def make_asset_dirs(name):
+    # add the application name to the asset paths
+    asset_path = os.path.join(name, ASSETS_PATH)
+    asset_images_path = os.path.join(name, ASSET_IMAGES_PATH)
+    asset_stylesheets_path = os.path.join(name, ASSET_STYLESHEETS_PATH)
+    asset_javascripts_path = os.path.join(name, ASSET_JAVASCRIPTS_PATH)
+
+    print COLOR_OKBLUE + '\nCreating ' + name + ' asset directories...' + COLOR_ENDC
+    if not os.path.exists(asset_path):
+        os.makedirs(asset_path)
+        print CREATE_STATEMENT + asset_path
+    if not os.path.exists(asset_images_path):
+        os.makedirs(asset_images_path)
+        print CREATE_STATEMENT + asset_images_path
+    if not os.path.exists(asset_javascripts_path):
+        os.makedirs(asset_javascripts_path)
+        print CREATE_STATEMENT + asset_javascripts_path
+    if not os.path.exists(asset_stylesheets_path):
+        os.makedirs(asset_stylesheets_path)
+        print CREATE_STATEMENT + asset_stylesheets_path
+
+    # generate the application.scss
+    with open(os.path.join(asset_stylesheets_path, 'application.scss'), 'w') as application_stylesheet:
+        application_stylesheet.write(str((
+            '// ' + name + ' application stylesheet\n\n'
+            '@import "./vendor/bootstrap/scss/bootstrap.scss";\n'
+            '@import "./vendor/bootstrap/scss/mixins.scss";\n'
+            '@import "./vendor/font-awesome/scss/font-awesome.scss";\n\n'
+            )))
+    print CREATE_STATEMENT + asset_stylesheets_path + 'application.scss'
+
+    # generate the application.js
+    with open(os.path.join(asset_javascripts_path, 'application.js'), 'w') as application_javascript:
+        application_javascript.write('// ' + name + ' application javascript')
+    print CREATE_STATEMENT + asset_javascripts_path + 'application.js'
+
+
+def make_static_dirs(name):
+    # add the application name to the asset paths
+    static_path = os.path.join(name, STATIC_PATH)
+    static_images_path = os.path.join(name, STATIC_IMAGE_PATH)
+    static_css_path = os.path.join(name, STATIC_CSS_PATH)
+    static_js_path = os.path.join(name, STATIC_JS_PATH)
+
+    print COLOR_OKBLUE + '\nCreating ' + name + ' static directories...' + COLOR_ENDC
+    if not os.path.exists(static_path):
+        os.makedirs(static_path)
+        print CREATE_STATEMENT + static_path
+    if not os.path.exists(static_images_path):
+        os.makedirs(static_images_path)
+        print CREATE_STATEMENT + static_images_path
+    if not os.path.exists(static_css_path):
+        os.makedirs(static_css_path)
+        print CREATE_STATEMENT + static_css_path
+    if not os.path.exists(static_js_path):
+        os.makedirs(static_js_path)
+        print CREATE_STATEMENT + static_js_path
+
+
+def add_module(name, path="", project_name="", with_layout=False):
+    print COLOR_OKBLUE + '\nCreating ' + name + ' application module...' + COLOR_ENDC
+
+    if not len(path) > 0:
+        path = '/' + name
+
+    # path to the module
+    module_base_path = project_name + "" + APP_PATH + "modules/"
+    module_path = project_name + "" + APP_PATH + "modules/" + name
+
+    print CREATE_STATEMENT + module_path
+    if not os.path.exists(module_path):
+        # create the module directory
+        os.makedirs(module_path)
+    if not os.path.exists(module_base_path + '__init__.py'):
+        with open(os.path.join(module_base_path, '__init__.py'), 'w') as module_init_file:
+            module_init_file.write("# " + name + " application module init")
+            print CREATE_STATEMENT + module_path + "/__init__.py"
+
+    # create the __init__.py file
+    with open(os.path.join(module_path, '__init__.py'), 'w') as init_file:
+        init_file.write('#' + name + ' module')
+
+    # create the controllers.py file
+    with open(os.path.join(module_path, 'controllers.py'), 'w') as controllers_file:
+        controllers_file.write(controllers_file_contents(name, path))
+        print CREATE_STATEMENT + module_path + "/controllers.py"
+
+    # create the forms.py file
+    with open(os.path.join(module_path, 'forms.py'), 'w') as forms_file:
+        forms_file.write(forms_file_contents(name))
+        print CREATE_STATEMENT + module_path + "/forms.py"
+
+    # create the models.py file
+    with open(os.path.join(module_path, 'models.py'), 'w') as models_file:
+        models_file.write(models_file_contents(name))
+        print CREATE_STATEMENT + module_path + "/models.py"
+
+    # import and register the module
+    with open(os.path.join(project_name + APP_PATH, "__init__.py"), 'a') as register_module_file:
+        register_module_file.write(register_module_file_contents(name))
+
+    # create the index.html template file
+    module_template_path = project_name + APP_PATH + "templates/" + name
+    if not os.path.exists(module_template_path):
+        os.makedirs(module_template_path)
+
+    if with_layout:
+        # create the modules layout.html file
+        with open(os.path.join(module_template_path, 'layout.html'), 'w') as layout_template_file:
+            layout_template_file.write(layout_template_file_contents(name))
+        print CREATE_STATEMENT + module_template_path + "/layout.html"
+
+    # create the index.html file
+    with open(os.path.join(module_template_path, 'index.html'), 'w') as index_template_file:
+        index_template_file.write(index_template_file_contents(name, layout=with_layout))
+    print CREATE_STATEMENT + module_template_path + "/index.html"
+
+    # create the sass file
+    with open(os.path.join(project_name + ASSET_STYLESHEETS_PATH, '_' + name + '.scss'), 'w') as module_sass_file:
+        module_sass_file.write('// ' + name + ' stylesheet')
+    print CREATE_STATEMENT + project_name + ASSET_STYLESHEETS_PATH + name + ".scss"
+    # import module stylesheet in application.scss
+    with open(os.path.join(project_name + ASSET_STYLESHEETS_PATH, 'application.scss'), 'a') as application_sass_file:
+        application_sass_file.write('\n@import "' + name + '";')
+
+    # create the javascript file
+    with open(os.path.join(project_name + ASSET_JAVASCRIPTS_PATH, '_' + name + '.js'), 'w') as module_javascript_file:
+        module_javascript_file.write('//' + name + ' javascript')
+    print CREATE_STATEMENT + project_name + ASSET_JAVASCRIPTS_PATH + name + ".js"
+
+# File content generation methods
+
+
+def requirements_file_contents():
+    contents = (
+        "alembic==0.8.3\n"
+        "blinker==1.4\n"
+        "Flask==0.10.1\n"
+        "Flask-Login==0.2.11\n"
+        "Flask-Mail==0.9.1\n"
+        "Flask-Migrate==1.6.0\n"
+        "Flask-Principal==0.4.0\n"
+        "Flask-Script==2.0.5\n"
+        "Flask-Security==1.7.4\n"
+        "Flask-SQLAlchemy==2.1\n"
+        "Flask-WTF==0.12\n"
+        "itsdangerous==0.24\n"
+        "Jinja2==2.8"
+    )
+    return str(contents)
+
+
+def error_404_file_contents():
+    contents = (
+        
+    )
+    contents = (
+        '{% extends "errors/layout.html" %}\n'
+        "{% block body %}\n"
+        "<h1>404 - Page Not Found</h1>\n"
+        "<p>Sorry, but the page you are looking for cannot be found.</p>\n"
+        "{% endblock %}"
+    )
+    return str(contents)
+
+
+def run_file_contents(name):
+    contents = (
+        "# Run a test web server.\n"
+        "from app import app\n"
+        "app.run(host='0.0.0.0', port=5000, debug=True)"
+    )
+    return str(contents)
+
+
+def config_file_contents(name, db):
+    if db == 'sqlite':
+        db_provider = 'sqlite:///' + name + '.db'
+    elif db == 'mysql':
+        db_provider = 'mysql://root:secret@localhost/' + name + '_db'
+
+    contents = (
+        "# " + name + " application configuration\n\n"
+        "# Statement for enabling the development environment\n"
+        "DEBUG = True\n\n"
+        "# Define the application directory\n"
+        "import os, sys\n\n"
+        "BASE_DIR = os.path.abspath(os.path.dirname(__file__))\n\n"
+        "# Database\n"
+        "SQLALCHEMY_DATABASE_URI = '%s'\n"
+        "SQLALCHEMY_TRACK_MODIFICATIONS = True\n"
+        "DATABASE_CONNECT_OPTIONS = {}\n\n"
+        "# Mail\n"
+        "MAIL_SERVER         = 'smtp.gmail.com'\n"
+        "MAIL_PORT           = 465\n"
+        "MAIL_USE_TLS        = False\n"
+        "MAIL_USE_SSL        = True\n"
+        "MAIL_DEBUG          = True\n"
+        "MAIL_USERNAME       = 'test@google.com'\n"
+        "MAIL_PASSWORD       = 'test'\n"
+        "DEFAULT_MAIL_SENDER = None\n\n"
+        "# Application threads. A common general assumtion is\n"
+        "# using 2 per available processor cores - to handle\n"
+        "# incoming requests using one and preforming background\n"
+        "# operations using the other.\n"
+        "THREADS_PER_PAGE = 2\n\n"
+        "# Enable protection against *Cross-site Request Forgery (CSRF)*\n"
+        "CSRF_ENABLED = True\n\n"
+        "# Use a secure, unique and absolutley secret key\n"
+        "CSRF_SESSION_KEY = 'secret'\n\n"
+        "# Secret key for signing cookies\n"
+        "SECRET_KEY = 'secret'"
+    ) %(db_provider)
+    return str(contents)
+
+
+def app_init_file_contents(name):
+    contents = (
+        "# " + name + " application init\n\n"
+        "# Import flash and template operators\n"
+        "from flask import Flask, render_template\n\n"
+        "# Import SQLAlchemy\n"
+        "from flask.ext.sqlalchemy import SQLAlchemy\n\n"
+        "# Import Flask-Migrate\n"
+        "from flask.ext.script import Manager\n"
+        "from flask.ext.migrate import Migrate, MigrateCommand\n\n"
+        "# Import Flask-Mail\n"
+        "from flask.ext.mail import Mail\n\n"
+        "# Define the WSGI application object\n"
+        "app = Flask(__name__)\n\n"
+        "# Configurations\n"
+        "app.config.from_object('config')\n\n"
+        "# Define the database object which is imported by modules and controllers\n"
+        "db = SQLAlchemy(app)\n"
+        "migrate = Migrate(app, db)\n\n"
+        "# Build the database:\n"
+        "# This will create the database using SQLAlchemy\n"
+        "db.create_all()\n\n"
+        "# Enable database migrations\n"
+        "manager = Manager(app)\n"
+        "manager.add_command('db', MigrateCommand)\n"
+        "if __name__ == '__main__':\n"
+        "    manager.run()\n\n"
+        "# Enable email sending\n"
+        "mail = Mail(app)\n\n"
+        "# HTTP error handling\n"
+        "@app.errorhandler(404)\n"
+        "def not_found(error):\n"
+        "    return render_template('errors/404.html'), 404\n\n"
+        "# Application Modules\n"
+    )
+    return str(contents)
+
+
+def register_module_file_contents(name):
+    contents = (
+        "from app.modules." + name + ".controllers import " +
+        name + " as " + name + "_module\n"
+        "app.register_blueprint(" + name + "_module)\n\n"
+    )
+    return str(contents)
+
+def app_layout_template_file_contents(name):
+    contents = (
+    '<!DOCTYPE html>\n'
+    '<html lang="en">\n'
+    '<head>\n'
+    '    <meta charset="utf-8">\n'
+    '    <meta name="viewport" content="width=device-width, initial-scale=1">\n'
+    '    <meta http-equiv="X-UA-Compatible" content="IE=edge">\n'
+    '    <title>' + name.capitalize() + ' App</title>\n'
+    '    <link rel=stylesheet type=text/css href="{{ url_for(\'static\', filename=\'css/application.css\') }}">\n'
+    '</head>\n'
+    '<body>\n'
+    '   {% for message in get_flashed_messages() %}\n'
+    '   <div class="flash-message">{{ message }}</div>\n'
+    '   {% endfor %}\n\n'
+    '   {% block body %}{% endblock %}\n\n'
+    '   <script src="{{url_for(\'static\', filename=\'js/application.js\')}}"></script>\n'
+    '</body>\n'
+    '</html>'
+    )
+    return str(contents)
+
+def layout_template_file_contents(name):
+    contents = (
+        '<!DOCTYPE html>\n'
+        '<html lang="en">\n'
+        '<head>\n'
+        '    <meta charset="utf-8">\n'
+        '    <meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        '    <meta http-equiv="X-UA-Compatible" content="IE=edge">\n'
+        '    <title>' + name.capitalize() + ' Module</title>\n'
+        '    <link rel=stylesheet type=text/css href="{{ url_for(\'static\', filename=\'css/application.css\') }}">\n'
+        '</head>\n'
+        '<body>\n'
+        '   {% for message in get_flashed_messages() %}\n'
+        '   <div class="flash-message">{{ message }}</div>\n'
+        '   {% endfor %}\n\n'
+        '   {% block body %}{% endblock %}\n\n'
+        '   <script src="{{url_for(\'static\', filename=\'js/application.js\')}}"></script>\n'
+        '</body>\n'
+        '</html>'
+    )
+    return str(contents)
+
+
+def controllers_file_contents(name, path=""):
+    contents = (
+        "#" + name + " application module controllers\n\n"
+        "# Import flask dependencies\n"
+        "from flask import Blueprint, request, render_template, flash, g, session, redirect, url_for\n\n"
+        "# Import the database object from the main app module\n"
+        "from app import db\n\n"
+        "# Import module forms\n"
+        "from app.modules." + name + ".forms import " + name.capitalize() + "Form\n\n"
+        "# Import module models\n"
+        "from app.modules." + name + ".models import " + name.capitalize() + "\n\n"
+        "# Define the blueprint: '" + name +
+        "', set its url prefix: app.url/" + path + "\n"
+        "# In the case of the " + name + " module, the url prefix is " + path + "\n"
+        "" + str(name) + " = Blueprint('" + name +
+        "', __name__, url_prefix='" + path + "')\n\n"
+        "# Set the route and accepted methods\n"
+        "@" + name + ".route('/', methods=['GET'])\n"
+        "def index():\n"
+        "    return render_template('" + name + "/index.html')"
+    )
+    return str(contents)
+
+
+def forms_file_contents(name):
+    contents = (
+        "#" + name + " application module forms\n\n"
+        "# Import Form\n"
+        "from flask.ext.wtf import Form\n\n"
+        "# Import Form elements such as TextField and BooleanField\n"
+        "from wtforms import TextField, PasswordField, BooleanField\n\n"
+        "# Import Form validators\n"
+        "from wtforms.validators import Required, Email, EqualTo\n\n"
+        "# Define the form (WTForms)\n"
+        "class " + name.capitalize() + "Form(Form):\n"
+        "   field = TextField('Field name',\n"
+        "           [Required(message='This field is required.')])"
+    )
+    return str(contents)
+
+
+def models_file_contents(name):
+    contents = (
+        "#" + name + " application module models\n\n"
+        "# Import the database object (db) from the main application module\n"
+        "from app import db\n\n"
+        "# Define an " + name + " base model for other " +
+        name + " database tables to inherit\n"
+        "class " + name.capitalize() + "Base(db.Model):\n\n"
+        "    __abstract__  = True\n"
+        "    id            = db.Column(db.Integer, primary_key=True)\n"
+        "    date_created  = db.Column(db.DateTime, default=db.func.current_timestamp())\n"
+        "    date_modified = db.Column(db.DateTime, default=db.func.current_timestamp(),\n"
+        "                                           onupdate=db.func.current_timestamp())\n\n"
+        "# Define an " + name.capitalize() + "model\n"
+        "class " + name.capitalize() + "(" + name.capitalize() + "Base):\n\n"
+        "    __tablename__ = '" + name + "'\n\n"
+        "    # field\n"
+        "    field = db.Column(db.String(128), nullable=False, unique=True)\n\n"
+        "    def __init__(self, field):\n"
+        "        self.field = field\n\n"
+        "    def __repr__(self):\n"
+        "        return '<" + name.capitalize() + " %r>' % (self.field)"
+    )
+    return str(contents)
+
+
+def index_template_file_contents(name, layout=False):
+    if layout:
+        contents = (
+            '{% extends "' + name + '/layout.html" %}\n'
+            "{% block body %}\n"
+            "   <h1>" + name.capitalize() + " Index</h1>\n"
+            "   <p>Find me in /app/templates/" + name + "\n"
+            "{% endblock %}"
+        )
+    else:
+        contents = (
+            '{% extends "layouts/application.html" %}\n'
+            "{% block body %}\n"
+            "   <h1>" + name.capitalize() + " Index</h1>\n"
+            "   <p>Find me in /app/templates/" + name + "\n"
+            "{% endblock %}"
+        )
+    return str(contents)
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
