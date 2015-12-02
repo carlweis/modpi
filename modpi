@@ -230,12 +230,12 @@ def create_app(name, db='sqlite'):
     print COLOR_OKGREEN + 'Project Successfully generated. Happy coding!\n' + COLOR_ENDC
 
 def serve():
+    import SocketServer
     commands = [
         ['env/bin/python', 'run.py'],
         ['gulp', 'init']
     ]
     exec_commands(commands)
-    
     # os.system("env/bin/python run.py")
     # os.system("gulp")
 
@@ -276,23 +276,27 @@ def exec_commands(cmds):
 
     max_task = cpu_count()
     processes = []
-    while True:
-        while cmds and len(processes) < max_task:
-            task = cmds.pop()
-            print list2cmdline(task)
-            processes.append(Popen(task))
 
-        for p in processes:
-            if done(p):
-                if success(p):
-                    processes.remove(p)
-                else:
-                    fail()
+    try:
+        while True:
+            while cmds and len(processes) < max_task:
+                task = cmds.pop()
+                print list2cmdline(task)
+                processes.append(Popen(task))
 
-        if not processes and not cmds:
-            break
-        else:
-            time.sleep(0.05)
+            for p in processes:
+                if done(p):
+                    if success(p):
+                        processes.remove(p)
+                    else:
+                        fail()
+
+            if not processes and not cmds:
+                break
+            else:
+                time.sleep(0.05)
+    except:
+        exit()
 
 def init_git_and_commit(name):
     print '\n' + COLOR_OKGREEN + 'Git Initialization...\n' + COLOR_ENDC
@@ -330,120 +334,18 @@ def make_project_files(name):
 
     # generate bower.json
     with open(name + '/bower.json', 'w') as bowerjson_file:
-     bowerjson_file.write(str((
-             '{\n\t"name": "' + name + '",'
-    '''
-    "description": "",
-    "main": "",
-    "license": "MIT",
-    "homepage": "",
-    "private": true,
-    "directory": "vendor/",
-    "dependencies": {
-        "jquery": "~2.1.4",
-        "bootstrap": "v4.0.0-alpha",
-        "font-awesome": "~4.5.0"
-    }
-}
-'''
-     )))
+     bowerjson_file.write(bower_json_file_contents(name))
     print CREATE_STATEMENT + name + '/bower.json'
 
     # generate package.json
-    with open(name + '/package.json', 'w') as packagejson_file:
-            packagejson_file.write(str((
-    '''
-{
-    "private": true,
-    "devDependencies": {
-        "bower": "^1.6.7",
-        "gulp": "^3.8.8",
-        "gulp-concat": "^2.6.0",
-        "gulp-rename": "^1.2.2",
-        "gulp-sass": "^2.1.0",
-        "gulp-uglify": "^1.4.2"
-    },
-    "dependencies": {
-        "bootstrap-sass": "^3.0.0"
-    }
-}
-'''
-            )))
+    with open(name + '/package.json', 'w') as package_json_file:
+            package_json_file.write(package_json_file_contents())
     print CREATE_STATEMENT + name + '/package.json'
 
     # generate Gulpfile.js
     with open(name + '/Gulpfile.js', 'w') as gulp_file:
-            gulp_file.write(str((
-    ''' 
-// imports
-var gulp = require('gulp');
-var sass = require('gulp-sass');
-var concat = require('gulp-concat');
-var uglify = require('gulp-uglify');
-var rename = require('gulp-rename');
-
-// styles
-gulp.task('styles', function() {
-    gulp.src('app/assets/stylesheets/**/*.scss')
-        .pipe(sass().on('error', sass.logError))
-        .pipe(gulp.dest('app/static/css/'))
-});
-
-// core javascript
-gulp.task('js-core', function() {
-    return gulp.src([
-            'vendor/jquery/dist/jquery.min.js',
-            'vendor/bootstrap/dist/js/bootstrap.min.js'
-        ])
-        .pipe(concat('vendor.js'))
-        .pipe(gulp.dest('app/assets/javascripts/'))
-        .pipe(rename('vendor.js'))
-        .pipe(uglify())
-        .pipe(gulp.dest('app/assets/javascripts/'))
-});
-
-// application javascript
-gulp.task('js-default', function() {
-    return gulp.src([
-            'app/assets/javascripts/vendor.js',
-            'app/assets/javascripts/application.js',
-            'app/assets/javascripts/_default.js',
-        ])
-        .pipe(concat('application.js'))
-        .pipe(gulp.dest('app/static/js/'))
-        .pipe(rename('application.js'))
-        .pipe(uglify())
-        .pipe(gulp.dest('app/static/js/'))
-});
-
-gulp.task('init', ['styles', 'js-core', 'js-default'], function() {
-     return gulp.src([
-            'app/assets/javascripts/vendor.js',
-            'app/assets/javascripts/application.js',
-        ])
-        .pipe(concat('application.js'))
-        .pipe(gulp.dest('app/static/js/'))
-        .pipe(rename('application.js'))
-        .pipe(uglify())
-        .pipe(gulp.dest('app/static/js/'))
-});
-
-//Watch task
-gulp.task('default', ['styles', 'js-core', 'js-default'], function() {
-    gulp.watch([
-        'app/assets/stylesheets/**/*.scss',
-        'app/assets/javascripts/**/*.js'
-    ], [
-        'styles',
-        'js-core',
-        'js-default'
-    ]);
-});
-'''
-            )))
+            gulp_file.write(gulp_file_contents())
     print CREATE_STATEMENT + name + '/Gulpfile.js'
-
-
 
 def make_asset_dirs(name):
     # add the application name to the asset paths
@@ -468,12 +370,7 @@ def make_asset_dirs(name):
 
     # generate the application.scss
     with open(os.path.join(asset_stylesheets_path, 'application.scss'), 'w') as application_stylesheet:
-        application_stylesheet.write(str((
-            '// ' + name + ' application stylesheet\n\n'
-            '@import "./vendor/bootstrap/scss/bootstrap.scss";\n'
-            '@import "./vendor/bootstrap/scss/mixins.scss";\n'
-            '@import "./vendor/font-awesome/scss/font-awesome.scss";\n\n'
-            )))
+        application_stylesheet.write(application_sass_file_contents(name))
     print CREATE_STATEMENT + asset_stylesheets_path + 'application.scss'
 
     # generate the application.js
@@ -576,7 +473,126 @@ def add_module(name, path="", project_name="", with_layout=False):
     print CREATE_STATEMENT + project_name + ASSET_JAVASCRIPTS_PATH + name + ".js"
 
 # File content generation methods
+def application_sass_file_contents(name):
+    contents = (
+        '// ' + name + ' application stylesheet\n\n'
+        '@import "./vendor/bootstrap/scss/bootstrap.scss";\n'
+        '@import "./vendor/bootstrap/scss/mixins.scss";\n'
+        '@import "./vendor/font-awesome/scss/font-awesome.scss";\n\n'
+        )
+    return str(contents)
 
+def gulp_file_contents():
+    contents = (
+    ''' 
+// imports
+var gulp = require('gulp');
+var sass = require('gulp-sass');
+var concat = require('gulp-concat');
+var uglify = require('gulp-uglify');
+var rename = require('gulp-rename');
+
+// styles
+gulp.task('styles', function() {
+    gulp.src('app/assets/stylesheets/**/*.scss')
+        .pipe(sass().on('error', sass.logError))
+        .pipe(gulp.dest('app/static/css/'))
+});
+
+// core javascript
+gulp.task('js-core', function() {
+    return gulp.src([
+            'vendor/jquery/dist/jquery.min.js',
+            'vendor/bootstrap/dist/js/bootstrap.min.js'
+        ])
+        .pipe(concat('vendor.js'))
+        .pipe(gulp.dest('app/assets/javascripts/'))
+        .pipe(rename('vendor.js'))
+        .pipe(uglify())
+        .pipe(gulp.dest('app/assets/javascripts/'))
+});
+
+// application javascript
+gulp.task('js-default', function() {
+    return gulp.src([
+            'app/assets/javascripts/vendor.js',
+            'app/assets/javascripts/application.js',
+            'app/assets/javascripts/_default.js',
+        ])
+        .pipe(concat('application.js'))
+        .pipe(gulp.dest('app/static/js/'))
+        .pipe(rename('application.js'))
+        .pipe(uglify())
+        .pipe(gulp.dest('app/static/js/'))
+});
+
+gulp.task('init', ['styles', 'js-core', 'js-default'], function() {
+     return gulp.src([
+            'app/assets/javascripts/vendor.js',
+            'app/assets/javascripts/application.js',
+        ])
+        .pipe(concat('application.js'))
+        .pipe(gulp.dest('app/static/js/'))
+        .pipe(rename('application.js'))
+        .pipe(uglify())
+        .pipe(gulp.dest('app/static/js/'))
+});
+
+//Watch task
+gulp.task('default', ['styles', 'js-core', 'js-default'], function() {
+    gulp.watch([
+        'app/assets/stylesheets/**/*.scss',
+        'app/assets/javascripts/**/*.js'
+    ], [
+        'styles',
+        'js-core',
+        'js-default'
+    ]);
+});
+'''
+    )
+    return str(contents)
+
+def package_json_file_contents():
+    contents = (
+    '''
+    {
+        "private": true,
+        "devDependencies": {
+            "bower": "^1.6.7",
+            "gulp": "^3.8.8",
+            "gulp-concat": "^2.6.0",
+            "gulp-rename": "^1.2.2",
+            "gulp-sass": "^2.1.0",
+            "gulp-uglify": "^1.4.2"
+        },
+        "dependencies": {
+            "bootstrap-sass": "^3.0.0"
+        }
+    }
+    '''
+    )
+    return str(contents)
+
+def bower_json_file_contents(name):
+    contents = (
+    '{\n\t"name": "' + name + '",'
+    '''
+    "description": "",
+    "main": "",
+    "license": "MIT",
+    "homepage": "",
+    "private": true,
+    "directory": "vendor/",
+    "dependencies": {
+        "jquery": "~2.1.4",
+        "bootstrap": "v4.0.0-alpha",
+        "font-awesome": "~4.5.0"
+    }
+}
+'''
+    )
+    return str(contents)
 
 def requirements_file_contents():
     contents = (
@@ -598,9 +614,6 @@ def requirements_file_contents():
 
 
 def error_404_file_contents():
-    contents = (
-        
-    )
     contents = (
         '{% extends "errors/layout.html" %}\n'
         "{% block body %}\n"
