@@ -16,7 +16,7 @@ This is my first project in python, built in a few days. It works flawlessly thu
 continuing to improve it, as I get through this massive python book (Learning Python). If you want to
 help and improve the generate, please fork the repo and submit your pull-requests.
 
-I hope you enjoy all of the extra time you save, while the machine does the grunt work for you.
+I hope you enjoy all of the extra time you save, while *ModPi* does the grunt work for you.
 
 Happy Coding.
 
