@@ -83,34 +83,71 @@ def main(argv):
                     print COLOR_FAIL + APP_PATH_NOT_FOUND_ERROR_MESSAGE + COLOR_ENDC
                 else:
                     print 'generate javascript file'
+        # start web server
         elif args[0] == 'serve':
             if not os.path.exists(APP_PATH):
                 print COLOR_FAIL + APP_PATH_NOT_FOUND_ERROR_MESSAGE + COLOR_ENDC
             else:
                 # start the flask web server and gulp for asset processing
                 serve()
+        # install and build all assets and dependencies
+        elif args[0] == 'build':
+            if not os.path.exists(APP_PATH):
+                print COLOR_FAIL + APP_PATH_NOT_FOUND_ERROR_MESSAGE + COLOR_ENDC
+            else:
+                build()
+        # database commands
         elif args[0] == 'db':
             if not os.path.exists(APP_PATH):
                 print COLOR_FAIL + APP_PATH_NOT_FOUND_ERROR_MESSAGE + COLOR_ENDC
             else:
-                working_dir = os.path.realpath(__file__)
                 if args[1] == 'create':
-                    # create the database
-                    print CREATE_STATEMENT + 'database ' + working_dir
+                    # create the database (database allready created, just enable migrations)
+                    print CREATE_STATEMENT + 'database '
                     # enable migrations
                     if not os.path.exists('migrations'):
                         print ENABLE_STATEMENT + 'database migrations\n'
-                        os.system('env/bin/alembic init --template multidb migrations')
+                        os.system('env/bin/alembic init --template generic migrations')
                     else:
                         print FAILED_STATEMENT + 'migrations directory already exists.'
-
+                # current migration state
+                elif args[1] == 'current':
+                    print COLOR_OKGREEN + 'Database current status' + COLOR_ENDC
+                    os.system('env/bin/alembic current')
+                # migration history
+                elif args[1] == 'history':
+                    print COLOR_OKGREEN + 'Database migration history' + COLOR_ENDC
+                    os.system('env/bin/alembic history --verbose')
+                # rollback all migrations
+                elif args[1] == 'reset':
+                    print COLOR_WARNING + 'Rolling back database migrations...' + COLOR_ENDC
+                    os.system('env/bin/alembic downgrade base')
+                # apply migrations
                 elif args[1] == 'migrate':
-                    # migrate the database
-                    print MIGRATE_STATEMENT + ' database' + working_dir
+                    if not os.path.exists('migrations'):
+                        print FAILED_STATEMENT + 'migrations directory does not exist.'
+                        print COLOR_WARNING + 'run ' + COLOR_OKBLUE + 'db create' + COLOR_WARNING +' to create the database and enable migrations.\n' + COLOR_ENDC
+                    else:
+                        if len(args) > 2:
+                            # create a new migration
+                            os.system('env/bin/alembic revision -m "'+ args[2] + '"')
+                        else:
+                            # migrate the database
+                            print MIGRATE_STATEMENT + ' database'
+                            os.system('env/bin/alembic upgrade head')
+                            print COLOR_OKGREEN + 'Database migrated successfully.'
 
     except getopt.GetoptError:
         usage()
         sys.exit(2)
+
+def build():
+    print COLOR_WARNING + FONT_BOLD + 'Running application build...' + COLOR_ENDC
+    os.system('env/bin/pip freeze > requirements.txt')
+    install_app_requirements()
+    run_npm_install(name="")
+    run_bower_install(name="")
+    run_gulp_init(name="")
 
 def print_ascii_art_logo():
     print COLOR_WARNING + '\n-------- created by ' + COLOR_OKBLUE + \
@@ -210,10 +247,7 @@ def create_app(name, db='sqlite'):
     generate_requirements_file(name)
 
     # install app requirements
-    print COLOR_OKBLUE + 'Installing application requirements...\n' + COLOR_OKGREEN
-    os.system(name + "/env/bin/pip install -r " +
-              name + "/requirements.txt")
-    print COLOR_ENDC
+    install_app_requirements(name)
 
     # install node.js modules
     run_npm_install(name)
@@ -229,6 +263,14 @@ def create_app(name, db='sqlite'):
 
     print COLOR_OKGREEN + 'Project Successfully generated. Happy coding!\n' + COLOR_ENDC
 
+def install_app_requirements(name=""):
+    print COLOR_OKBLUE + 'Installing application requirements...' + COLOR_OKGREEN
+    if len(name) > 0:
+        os.system(name + "/env/bin/pip install -r " + name + "/requirements.txt")
+    else:
+        os.system("env/bin/pip install -r requirements.txt")
+    print COLOR_ENDC
+
 def serve():
     import SocketServer
     commands = [
@@ -236,8 +278,6 @@ def serve():
         ['gulp', 'init']
     ]
     exec_commands(commands)
-    # os.system("env/bin/python run.py")
-    # os.system("gulp")
 
 def cpu_count():
     ''' Returns the number of CPUs in the system
@@ -299,22 +339,48 @@ def exec_commands(cmds):
         exit()
 
 def init_git_and_commit(name):
-    print '\n' + COLOR_OKGREEN + 'Git Initialization...\n' + COLOR_ENDC
+    print '\n' + COLOR_WARNING + FONT_BOLD + 'Git Initialization...\n' + COLOR_ENDC
     os.system("cd " + name + "/ && git init && git add . && git commit -am'initial commit' && git status")
 
 def run_gulp_init(name):
-    os.system("cd " + name + "/ && gulp init")
+    print COLOR_WARNING + FONT_BOLD + 'Processing stylesheet and javascript assets.' + COLOR_ENDC
+    if len(name) > 0:
+        os.system("cd " + name + "/ && gulp init")
+    else:
+        os.system("gulp init")
 
 def run_npm_install(name):
-     os.system("cd " + name + "/ && npm install")
+    print COLOR_WARNING + FONT_BOLD + 'Installing nodejs packages...' + COLOR_ENDC
+    if len(name) > 0:
+        os.system("cd " + name + "/ && npm install")
+    else:
+        os.system("npm install")
 
 def run_bower_install(name):
-     os.system("cd " + name + "/ && bower install --save")
-     # copy font-awesome fonts to static/fonts
-     from shutil import copytree
-     print '\n' + CREATE_STATEMENT + name + '/static/fonts/\n'
-     print COLOR_OKBLUE + 'Copying font-awesome fonts to static folder...\n\n' + COLOR_ENDC
-     copytree(name + '/vendor/font-awesome/fonts', name + '/app/static/fonts/')
+    from shutil import copytree
+    
+    print COLOR_WARNING + FONT_BOLD + 'Installing bower packages...' + COLOR_ENDC
+
+    if len(name) > 0:
+        os.system("cd " + name + "/ && bower install --save")
+        if not os.path.exists('app/static/fonts/'):
+            # copy font-awesome fonts to static/fonts
+            print '\n' + CREATE_STATEMENT + name + '/static/fonts/\n'
+            print COLOR_OKBLUE + 'Copying font-awesome fonts to static folder...\n\n' + COLOR_ENDC
+            copytree(name + '/vendor/font-awesome/fonts', name + '/app/static/fonts/')
+        else:
+            print COLOR_FAIL + 'Skipping copying of fonts. Directory static/fonts already exists.\n' + COLOR_ENDC
+    else:
+        os.system("bower install --save")
+        if not os.path.exists('app/static/fonts/'):
+            # copy font-awesome fonts to static/fonts
+            print '\n' + CREATE_STATEMENT +'app/static/fonts/\n'
+            print COLOR_OKBLUE + 'Copying font-awesome fonts to static folder...\n\n' + COLOR_ENDC
+            copytree('vendor/font-awesome/fonts', 'app/static/fonts/')
+        else:
+            print COLOR_FAIL + 'Skipping copying of fonts. static/fonts already exists.\n' + COLOR_ENDC
+
+    
 
 def make_project_files(name):
     # generate README
@@ -324,7 +390,7 @@ def make_project_files(name):
 
     # generate .gitignore
     with open(name + '/.gitignore', 'w') as gitignore_file:
-        gitignore_file.write(str(('node_modules/\nvendor/\nenv/\n.env')))
+        gitignore_file.write(str(('node_modules/\nvendor/\nenv/\n.env\n.DS_Store')))
     print CREATE_STATEMENT + name + '/.gitignore'
 
     # generate .bowerrc
@@ -602,6 +668,7 @@ def requirements_file_contents():
         "Flask-Login==0.2.11\n"
         "Flask-Mail==0.9.1\n"
         "Flask-Migrate==1.6.0\n"
+        "pymysql==0.6.7\n"
         "Flask-Principal==0.4.0\n"
         "Flask-Script==2.0.5\n"
         "Flask-Security==1.7.4\n"
@@ -838,7 +905,7 @@ def index_template_file_contents(name, layout=False):
             '{% extends "' + name + '/layout.html" %}\n'
             "{% block body %}\n"
             "   <h1>" + name.capitalize() + " Index</h1>\n"
-            "   <p>Find me in /app/templates/" + name + "\n"
+            "   <p>Find me in /app/templates/" + name + "</p>\n"
             "{% endblock %}"
         )
     else:
@@ -846,7 +913,7 @@ def index_template_file_contents(name, layout=False):
             '{% extends "layouts/application.html" %}\n'
             "{% block body %}\n"
             "   <h1>" + name.capitalize() + " Index</h1>\n"
-            "   <p>Find me in /app/templates/" + name + "\n"
+            "   <p>Find me in /app/templates/" + name + "</p>\n"
             "{% endblock %}"
         )
     return str(contents)

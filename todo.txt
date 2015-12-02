@@ -1,0 +1,72 @@
+√ Add option to new command -d mysql or sqlite
+√ Copy font-awesome fonts to static/fonts
+√ Generate errors/layout.html
+√ Add git init to create_app + initial commit
+
+--------------------------------------------
+NEW COMMANDS
+--------------------------------------------
+Generate
+   g model name:module
+   g action name:module
+   g view name:module
+   g stylesheet name:module
+   g javascript name:module
+    -----------------------------------------------------------------------------------------
+                                    Generator Examples
+    -----------------------------------------------------------------------------------------
+    g model name        (i.e. g model user) -- will use default module
+    g model name:module (i.e. g model user:admin)
+    -----------------------------------------------------------------------------------------
+    g action name        (i.e. g action create) -- will use default module - def create():
+    g action name:module (i.e. g action create:posts)
+    -----------------------------------------------------------------------------------------
+    g view name          (i.e. g view footer) -- will use default module - default/footer.html
+    g view name:module   (i.e g view footer:posts)
+    -----------------------------------------------------------------------------------------
+    g stylesheet name    (i.e. g stylesheet social) - _social.scss
+    -----------------------------------------------------------------------------------------
+    g javascript name    (i.e. g javascript social) - social.js
+    -----------------------------------------------------------------------------------------
+
+--------------------------------------------
+Serve
+--------------------------------------------
+√ env/bin/python run.py && gulp
+
+--------------------------------------------
+Database - eg. db
+--------------------------------------------
+√ db
+   √ create
+   √ migrate
+        db migrate create_posts_table [id:integer,name:string:50]"
+        db migrate add_description_to_posts [description:string:200:required]
+   √ reset
+   √ history
+   √ current
+
+--------------------------------------------
+√ Build
+--------------------------------------------
+  √  pip install requirements.txt
+  √  npm install
+  √  bower install
+  √  gulp init
+
+--------------------------------------------
+Help
+--------------------------------------------
+generate help menu with descriptions of
+each command and it's useage.
+
+--------------------------------------------
+Deploy
+--------------------------------------------
+
+--------------------------------------------
+Schema builder
+--------------------------------------------
+use a text file to describe the projects
+structure and use the generator to scaffold
+the entire project.
