@@ -1,23 +1,18 @@
-#ModPi
-Flask based modular application generator, similar to rails; but for python.
-ModPi allows you to quickly generate applications using Flask, SQLAlchemy, Bootstrap, NodeJS, Gulp and more.
+# ModPi
 
-### Build and scaffold applications fast, just like you can in rails.
-Fully automated development, with generators for modules, views, layouts, routes, stylesheets, javascripts.
+ModPi is a Flask-based modular application generator, inspired by Rails but designed for Python. With ModPi, you can quickly scaffold applications using Flask, SQLAlchemy, Bootstrap, NodeJS, Gulp, and more.
 
-### Gulp Support for Asset management, fully-automated
-Automatic import of module sass files, and javascripts using gulp. This is hands off, it just works :).
+## Rapid Application Development Made Easy
 
-### Database Migrations 
-Includes easy commands like db create, db create:migration create_users_table and db migrate 
+ModPi streamlines your development process with automated generators for modules, views, layouts, routes, stylesheets, and JavaScript. Build and scaffold your applications with ease, just like in Rails.
 
-### Lots more to come.
-This is my first project in python, built in a few days. It works flawlessly thus far, and I will be
-continuing to improve it, as I get through this massive python book (Learning Python). If you want to
-help and improve the generate, please fork the repo and submit your pull-requests.
+## Seamless Asset Management with Gulp
 
-I hope you enjoy all of the extra time you save, while *ModPi* does the grunt work for you.
+Effortlessly manage assets with Gulp integration. ModPi automatically imports your module-specific SASS files and JavaScript. Once set up, it runs smoothly in the background, requiring no additional effort from you.
 
-Happy Coding.
+## Database Migrations Simplified
+Easily handle database migrations with simple commands like:
 
--Carl Weis <carl@carlweis.com>
+- db create
+- db create:migration create_users_table
+- db migrate
